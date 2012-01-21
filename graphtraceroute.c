@@ -432,7 +432,7 @@ int main(int argc, char* argv[]) {
 				}
 				break;
 			case 'l':
-				if (!(logfp = fopen(optarg,"r"))) {
+				if (!(logfp = fopen(optarg,"a+"))) {
 					fprintf(stderr,"Unable to open logfile %s\n", optarg);
 					return 1;
 				}
