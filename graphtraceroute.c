@@ -22,6 +22,8 @@ struct tracenode {
 	struct tracenode** children;
 };
 
+FILE* consolefp;
+
 struct tracenode* all_routes;
 
 struct tracenode* ___create_node(char* hostname, int kbs) {
@@ -35,37 +37,29 @@ struct tracenode* ___create_node(char* hostname, int kbs) {
 
 void ___add_trace(struct tracenode* node, char** trace, int numhosts, int kbs) {
 	assert(node->hostname != NULL);
-// 	assert(*trace != NULL);
-	
+
 	if (*trace == NULL)
 		return;
 
 	if (numhosts == 0)
 		return;
 	
-// 	fprintf(stderr,"### __add_trace %d %s\n", numhosts, *trace);
-
 	if (node->kbs < kbs)
 		node->kbs = kbs;
 
 	// If current node matches
 	if (strcmp(node->hostname, *trace) == 0) { // Hostname-match traverse to child nodes
-		trace++;
-// 		fprintf(stderr, "Hostname match, trying %s\n", *trace, trace[1]);
-			
-		// Search children for match
 		int i;
+		// Search children for match
+		trace++;
 		for (i=0; i<node->num_children; i++) {
-// 			fprintf(stderr, "TRY: %s\n", node->children[i]->hostname);
 			if (strcmp(node->children[i]->hostname, *trace) == 0) {
-// 				fprintf(stderr, "MATCH!!\n");
 				___add_trace(node->children[i], trace, numhosts-1, kbs);
 				return;
 			}
 		}
 	}
 
-// 	fprintf(stderr, "Adding %s under %s\n", *trace, node->hostname);
 	if (!node->children)
 		node->children = malloc((node->num_children+1)*sizeof(struct tracenode*));
 	else
@@ -120,15 +114,29 @@ void fprintf_nodes(FILE* fp, struct tracenode* node) {
 			
 		} else
 			R = 0xff;
-		fprintf(fp,"edge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];", kbs, R, G, B);
+		fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
 
 		fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname, node->children[i]->hostname);
 	}
-	fprintf(fp,"\n");
 
 	for (i=0; i<node->num_children; i++)
 		fprintf_nodes(fp, node->children[i]);
 }
+
+void fprintf_leaf_nodes(FILE* fp, struct tracenode* node) {
+	int i;
+
+	if (!node)
+		return;
+
+	if (node->num_children != 0) {
+		for (i=0; i<node->num_children; i++)
+			fprintf_leaf_nodes(fp, node->children[i]);
+	} else {
+		fprintf(fp,"\"%s\";\n",node->hostname);
+	}
+}
+
 
 void free_nodes(struct tracenode* node) {
 	int i;
@@ -183,7 +191,7 @@ void tracehost(const char* host, int kbs) {
 	strcat(buffer, " 2> /dev/null");
 
 	/* Spawn mtr */
-	printf("Tracing %s   ", host);
+	fprintf(consolefp, "Tracing %s   ", host);
 	fp = popen(buffer, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "popen error\n");
@@ -201,7 +209,7 @@ void tracehost(const char* host, int kbs) {
 		if (sscanf(buffer, "%c %d %s", &cmd, &hop, tmpbuf) != 3)
 			continue;
 
-		printf("\b\b%c ",progress_str[progress]);
+		if (consolefp) fprintf(consolefp, "\b\b%c ",progress_str[progress]);
 		fflush(stdout);
 		progress ++;
 		if (progress >= sizeof(progress_str))
@@ -228,7 +236,7 @@ void tracehost(const char* host, int kbs) {
 			max_hop = 0;
 		}
 	}
-	printf("\n");
+	if (consolefp) fprintf(consolefp, "\n");
 
 	status = pclose(fp);
 	if (status == -1) {
@@ -268,7 +276,7 @@ int getspeed(const char* url) {
 	float kbs = -1;
 
 	url2host(url, buffer, sizeof(buffer));
-	printf("Measuring speed from %s   ", buffer);
+	if (consolefp) fprintf(consolefp, "Measuring speed from %s   ", buffer);
 
 	strcpy(buffer, "wget --delete-after \"");
 	strcat(buffer, url);
@@ -288,7 +296,7 @@ int getspeed(const char* url) {
 		char MB = 0;
 		char * end;
 		end = strstr(buffer, "KB/s");
-		printf("\b\b%c ",progress_str[progress]);
+		if (consolefp) fprintf(consolefp, "\b\b%c ",progress_str[progress]);
 		fflush(stdout);
 		progress ++;
 		if (progress >= sizeof(progress_str))
@@ -313,7 +321,7 @@ int getspeed(const char* url) {
 				kbs *= 1024;
 		}
 	}
-	printf("\n");
+	if (consolefp) fprintf(consolefp, "\n");
 
 	status = pclose(fp);
 
@@ -374,27 +382,39 @@ const struct host_speed* speed_history_max_kbs(const char* hostname) {
 				sh = &speed_history[idx];
 		}
 	}
-	
-	if (sh)
-		printf("H: %s ----- %d\n", sh->hostname, sh->kbs);
 	return sh;
+}
+
+void print_usage() {
+	struct usage_option {
+		const char* opt;
+		const char* description;
+	} usage[] = {
+		{"-f <file>", "Read URLS from <file>. (default: stdin)"},
+		{"-l <file>", "Log speeds to <file>"},
+		{"-o <file>", "Write DOT-output to <file>. (default: stdout)"},
+		{"-q", "Be quiet"},
+		{NULL, NULL},
+	};
+	printf("Usage: graphtraceroute [OPTIONS]...\n");
+
+	int idx = 0;
+	while (usage[idx].opt != NULL) {
+		printf("%-13s %s\n", usage[idx].opt, usage[idx].description);
+		idx++;
+	}
 }
 
 int main(int argc, char* argv[]) {
 	char host[1024];
 	char url[1024];
-	FILE* dotoutfp = NULL;
+	FILE* dotoutfp = stdout;
 	FILE* logfp = NULL;
-	FILE* urlsfp = NULL; 
+	FILE* urlsfp = stdin;
+	consolefp =  stderr;
 	
-	#warning Tilføj argumenter: 
-	#warning  -f <file>    Read URLS from <file>. (default: stdin)
-	#warning  -s           Show speed (1: highest, 2: average)
-	#warning  -a <n>       Average over the last <n> logged speeds. (default: 24)
-	#warning  -l <file>    Log speeds to <file>
-
 	int option_charater;
-	while ((option_charater = getopt(argc, argv, "o:f:l:")) != -1) {
+	while ((option_charater = getopt(argc, argv, "o:f:l:q")) != -1) {
 // 		printf("%d %s\n", optind, optarg);
 		switch (option_charater) {
 			case 'o':
@@ -402,6 +422,8 @@ int main(int argc, char* argv[]) {
 					fprintf(stderr,"Unable to open outputfile\n");
 					return 1;
 				}
+				if (consolefp)
+					consolefp = stdout;
 				break;
 			case 'f':
 				if (!(urlsfp = fopen(optarg,"a+"))) {
@@ -414,13 +436,20 @@ int main(int argc, char* argv[]) {
 					fprintf(stderr,"Unable to open logfile %s\n", optarg);
 					return 1;
 				}
+				speed_history_readfile(logfp);
+				break;
+			case 'q':
+				consolefp = NULL;
+				break;
+			case '?':
+				print_usage();
+				exit(1);
 				break;
 		}
+
 	}
 
 	int idx = 0; 
-	
-	speed_history_readfile(logfp);
 
 	idx=0;
 	while (fgets(url, sizeof(url), urlsfp) != NULL && !feof(urlsfp)) {
@@ -432,31 +461,28 @@ int main(int argc, char* argv[]) {
 		url2host(url, host, sizeof(host));
 		int kbs = getspeed(url);
 		const struct host_speed* sh = speed_history_max_kbs(host);
-		fprintf(logfp, "%s %d\n", host, kbs);
+		if (logfp)
+			fprintf(logfp, "%s %d\n", host, kbs);
 		
 		if (sh && sh->kbs > kbs)
 			kbs = sh->kbs;
 		tracehost(host, kbs);
 		idx++;
 	}
-	fclose(logfp);
-	fclose(urlsfp);
 
 	fprintf(dotoutfp,"digraph A  { size=\"1000,1000\"; \n");
 	fprintf_nodes(dotoutfp, all_routes);
+
+	fprintf(dotoutfp, "\n{ rank=same;\n");
+	fprintf_leaf_nodes(dotoutfp, all_routes);
+	fprintf(dotoutfp, "}\n");
+
 	free_nodes(all_routes);
 	fprintf(dotoutfp,"}\n");
-	fclose(dotoutfp);
 
-
-// 	printf("{ rank=same;");
-// 	idx=0;
-// 	while (urls[idx] != NULL) {
-// 		url2host(urls[idx], host, sizeof(host));
-// 		printf("\"%s\";", host);
-// 		idx++;
-// 	}
-// 	printf("}\n");
+	if (logfp)              fclose(logfp);
+	if (urlsfp != stdin)    fclose(urlsfp);
+	if (dotoutfp != stdout) fclose(dotoutfp);
 
 	return 0;
 }
