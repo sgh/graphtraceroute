@@ -207,7 +207,7 @@ void tracehost(const char* host, int kbs) {
 		exit(1);
 	}
 
-	int progress = 0;
+	unsigned int progress = 0;
 	const char progress_str[] = {'-','\\','|','/'};
 	while ( fgets(buffer, sizeof(buffer), fp) != NULL) {
 		int hop;
@@ -298,7 +298,7 @@ int getspeed(const char* url) {
 		exit(1);
 	}
 
-	int progress = 0;
+	unsigned int progress = 0;
 	const char progress_str[] = {'-','\\','|','/'};
 	while ( fgets(buffer, sizeof(buffer), fp) != NULL) {
 		/* Match the last statistics line */
