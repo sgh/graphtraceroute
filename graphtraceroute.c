@@ -158,6 +158,11 @@ void free_nodes(struct tracenode* node) {
 char url2host(const char* url, char* host, int hostlen) {
 	const char* ptr = strstr(url,"//");
 	
+	if (!ptr) {
+		strcpy(host, url);
+		return 1;
+	}
+
 	if (ptr) {
 		ptr += 2; // Skip "//"
 		const char* ptr_colon = strstr(ptr,":");
@@ -457,19 +462,30 @@ int main(int argc, char* argv[]) {
 
 	idx=0;
 	while (fgets(url, sizeof(url), urlsfp) != NULL && !feof(urlsfp)) {
+		char meassure_speed = 1;
 		int len = strlen(url);
+		int kbs;
 		while (!isalnum(url[len-1])) {
 			len --;
 			url[len] = 0;
 		}
-		url2host(url, host, sizeof(host));
-		int kbs = getspeed(url);
-		const struct host_speed* sh = speed_history_max_kbs(host);
-		if (logfp)
-			fprintf(logfp, "%s %d\n", host, kbs);
-		
-		if (sh && sh->kbs > kbs)
-			kbs = sh->kbs;
+
+		if (len > 0 && url[0] == '#')
+			continue;
+
+		if (url2host(url, host, sizeof(host)))
+			meassure_speed = 0;
+
+		kbs = -1;
+		if (meassure_speed) {
+			kbs = getspeed(url);
+			const struct host_speed* sh = speed_history_max_kbs(host);
+			if (logfp && kbs != -1)
+				fprintf(logfp, "%s %d\n", host, kbs);
+
+			if (sh && sh->kbs > kbs)
+				kbs = sh->kbs;
+		}
 		tracehost(host, kbs);
 		idx++;
 	}
