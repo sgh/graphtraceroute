@@ -357,8 +357,8 @@ void speed_history_readfile(FILE* logfp) {
 				len --;
 				buffer[len] = 0;
 			}
-			
-			if (sscanf(buffer,"%s %d", tmp, &kbs) != 2) {
+
+			if (sscanf(buffer,"%s %d", tmp, &kbs) == 2) {
 				
 				if (history_length == 0)
 					speed_history = (struct host_speed*) malloc(sizeof(struct host_speed));
