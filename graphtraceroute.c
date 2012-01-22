@@ -321,7 +321,7 @@ int getspeed(const char* url) {
 				kbs *= 1024;
 		}
 	}
-	if (consolefp) fprintf(consolefp, "\n");
+	if (consolefp) fprintf(consolefp, "\b\b%d KB/s\n",(int)kbs);
 
 	status = pclose(fp);
 
