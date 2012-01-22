@@ -1,0 +1,28 @@
+###############
+GraphTraceroute
+###############
+
+graphtraceroute is a program that can combine the output of "traceroute" from
+severeal hosts. Of the hosts are supplied using http://, ftp:// or any other
+"wget"-compatible URL the named file will be fetched to measure the speed.
+
+Route-list and downlaod speeds is output in a dot-file.
+
+Compiling
+=========
+
+$ make
+
+Usage
+=====
+
+GraphTraceroute is executed from the commandline. You must supply it with a
+file containing the URLS to fetch and trace or just bare hostname if you only
+want a trace.
+
+$ graphtraceroute -f myurls.lst -o myurls.dot
+
+$ dot -Tpng myurls.dot -o myurls.png
+
+Now you should have a nice png containing the graph of the traceroute to all
+hosts listed in "myurls.lst"
