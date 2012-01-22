@@ -114,7 +114,11 @@ void fprintf_nodes(FILE* fp, struct tracenode* node) {
 			
 		} else
 			R = 0xff;
-		fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
+
+		if (kbs == -1)
+			fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=5];\n");
+		else
+			fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
 
 		fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname, node->children[i]->hostname);
 	}
