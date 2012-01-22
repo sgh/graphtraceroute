@@ -13,6 +13,11 @@ Compiling
 
 $ make
 
+Requirements
+============
+
+The application requires "wget" and "mtr" to be installed on the system.
+
 Usage
 =====
 
