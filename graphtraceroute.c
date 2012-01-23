@@ -490,7 +490,10 @@ int main(int argc, char* argv[]) {
 		idx++;
 	}
 
-	fprintf(dotoutfp,"digraph A  { size=\"1000,1000\"; \n");
+	fprintf(dotoutfp,"digraph A  {\n");
+	fprintf(dotoutfp,"node [fontsize=10];\n");
+	fprintf(dotoutfp,"edge [fontsize=10, penwidth=3];\n");
+
 	fprintf_nodes(dotoutfp, all_routes);
 
 	fprintf(dotoutfp, "\n{ rank=same;\n");
