@@ -103,7 +103,7 @@ void fprintf_nodes(FILE* fp, struct tracenode* node) {
 		else if (kbs >= kbs_fail) {
 			unsigned int val = ((kbs - kbs_fail) * 512) / (kbs_win - kbs_fail);
 			if (val > 255) {
-				G = val - 255;
+				G = 255;
 				R = 255 - (val - 255);
 			} else {
 				R = 255;
