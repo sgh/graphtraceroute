@@ -394,6 +394,20 @@ const struct host_speed* speed_history_max_kbs(const char* hostname) {
 	return sh;
 }
 
+int speed_history_avr_kbs(const char* hostname, int kbs) {
+	int idx;
+	char first = 1;
+	float val = 0;
+	for (idx=0; idx<history_length; idx++) {
+		if (strcmp(speed_history[idx].hostname, hostname) == 0) {
+			val = first ? val*0.9 + ((float)speed_history[idx].kbs)*0.1 : kbs;
+			first = 0;
+		}
+	}
+	val = first ? val*0.9 + ((float)speed_history[idx].kbs)*0.1 : kbs;
+	return val;
+}
+
 void print_usage() {
 	struct usage_option {
 		const char* opt;
@@ -479,12 +493,10 @@ int main(int argc, char* argv[]) {
 		kbs = -1;
 		if (meassure_speed) {
 			kbs = getspeed(url);
-			const struct host_speed* sh = speed_history_max_kbs(host);
 			if (logfp && kbs != -1)
 				fprintf(logfp, "%s %d\n", host, kbs);
 
-			if (sh && sh->kbs > kbs)
-				kbs = sh->kbs;
+			kbs = speed_history_avr_kbs(host, kbs);
 		}
 		tracehost(host, kbs);
 		idx++;
