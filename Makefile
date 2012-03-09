@@ -1,2 +1,2 @@
 all:
-	gcc -Wall -Wextra -O2 -o graphtraceroute graphtraceroute.c 
+	g++ -Wall -Wextra -O2 -o graphtraceroute graphtraceroute.cpp
