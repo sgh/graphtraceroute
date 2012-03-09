@@ -396,15 +396,15 @@ const struct host_speed* speed_history_max_kbs(const char* hostname) {
 
 int speed_history_avr_kbs(const char* hostname, int kbs) {
 	int idx;
-	char first = 1;
+	char matches = 0;
 	float val = 0;
 	for (idx=0; idx<history_length; idx++) {
 		if (strcmp(speed_history[idx].hostname, hostname) == 0) {
-			val = first ? val*0.9 + ((float)speed_history[idx].kbs)*0.1 : kbs;
-			first = 0;
+			val = matches ? val*0.9 + ((float)speed_history[idx].kbs)*0.1 : kbs;
+			matches++;
 		}
 	}
-	val = first ? val*0.9 + ((float)speed_history[idx].kbs)*0.1 : kbs;
+	val = matches ? val*0.9 + kbs*0.1 : kbs;
 	return val;
 }
 
