@@ -17,29 +17,29 @@
 #include <string>
 #include <vector>
 
-struct tracenode;
-struct tracenode {
-	tracenode() {
+struct TraceNode;
+struct TraceNode {
+	TraceNode() {
 		kbs = 0;
 	}
 	int kbs;
 	std::string hostname;
-	std::vector<struct tracenode*> children;
+	std::vector<struct TraceNode*> children;
 };
 
 FILE* consolefp;
 
-struct tracenode* all_routes;
+struct TraceNode* all_routes;
 
-struct tracenode* ___create_node(char* hostname, int kbs) {
+struct TraceNode* ___create_node(char* hostname, int kbs) {
 // 	fprintf(stderr, "Creating node %s\n", hostname);
-	struct tracenode* ptr = new struct tracenode;
+	struct TraceNode* ptr = new struct TraceNode;
 	ptr->hostname = hostname;
 	ptr->kbs = kbs;	
 	return ptr;
 }
 
-void ___add_trace(struct tracenode* node, char** trace, int numhosts, int kbs) {
+void ___add_trace(struct TraceNode* node, char** trace, int numhosts, int kbs) {
 	assert(node->hostname.length());
 
 	if (*trace == NULL)
@@ -78,7 +78,7 @@ void add_trace(char** trace, int numhosts, int kbs) {
 	___add_trace(all_routes, trace, numhosts, kbs);
 }
 
-void fprintf_nodes(FILE* fp, struct tracenode* node) {
+void fprintf_nodes(FILE* fp, struct TraceNode* node) {
 	const int kbs_win  = 700;
 	const int kbs_fail = 400;
 	unsigned int i;
@@ -124,7 +124,7 @@ void fprintf_nodes(FILE* fp, struct tracenode* node) {
 		fprintf_nodes(fp, node->children[i]);
 }
 
-void fprintf_leaf_nodes(FILE* fp, struct tracenode* node) {
+void fprintf_leaf_nodes(FILE* fp, struct TraceNode* node) {
 	unsigned int i;
 
 	if (!node)
@@ -139,7 +139,7 @@ void fprintf_leaf_nodes(FILE* fp, struct tracenode* node) {
 }
 
 
-void free_nodes(struct tracenode* node) {
+void free_nodes(struct TraceNode* node) {
 	unsigned int i;
 
 	if (!node)
