@@ -14,10 +14,17 @@
 #include <assert.h>
 #include <ctype.h>
 
+#include <string>
+
 struct tracenode;
 struct tracenode {
+	tracenode() {
+		kbs = 0;
+		num_children = 0;
+		children = NULL;
+	}
 	int kbs;
-	char* hostname;
+	std::string hostname;
 	int num_children;
 	struct tracenode** children;
 };
@@ -28,15 +35,14 @@ struct tracenode* all_routes;
 
 struct tracenode* ___create_node(char* hostname, int kbs) {
 // 	fprintf(stderr, "Creating node %s\n", hostname);
-	struct tracenode* ptr = (struct tracenode*)malloc(sizeof(struct tracenode));
-	memset(ptr, 0, sizeof(struct tracenode));
+	struct tracenode* ptr = new struct tracenode;
 	ptr->hostname = hostname;
 	ptr->kbs = kbs;	
 	return ptr;
 }
 
 void ___add_trace(struct tracenode* node, char** trace, int numhosts, int kbs) {
-	assert(node->hostname != NULL);
+	assert(node->hostname.length());
 
 	if (*trace == NULL)
 		return;
@@ -48,12 +54,12 @@ void ___add_trace(struct tracenode* node, char** trace, int numhosts, int kbs) {
 		node->kbs = kbs;
 
 	// If current node matches
-	if (strcmp(node->hostname, *trace) == 0) { // Hostname-match traverse to child nodes
+	if (node->hostname == *trace) { // Hostname-match traverse to child nodes
 		int i;
 		// Search children for match
 		trace++;
 		for (i=0; i<node->num_children; i++) {
-			if (strcmp(node->children[i]->hostname, *trace) == 0) {
+			if (node->children[i]->hostname == *trace) {
 				___add_trace(node->children[i], trace, numhosts-1, kbs);
 				return;
 			}
@@ -61,9 +67,9 @@ void ___add_trace(struct tracenode* node, char** trace, int numhosts, int kbs) {
 	}
 
 	if (!node->children)
-		node->children = malloc((node->num_children+1)*sizeof(struct tracenode*));
+		node->children = (tracenode**)malloc((node->num_children+1)*sizeof(struct tracenode*));
 	else
-		node->children = realloc(node->children, (node->num_children+1)*sizeof(struct tracenode*));
+		node->children = (tracenode**)realloc(node->children, (node->num_children+1)*sizeof(struct tracenode*));
 	node->children[node->num_children] = ___create_node(*trace, kbs);
 	node->num_children ++;
 
@@ -95,7 +101,7 @@ void fprintf_nodes(FILE* fp, struct tracenode* node) {
 		unsigned char B = 0;
 		int kbs = node->children[i]->kbs;
 		if (node->children[i]->num_children == 0) {
-			fprintf(fp,"\"%s\" [shape=box];\n", node->children[i]->hostname);
+			fprintf(fp,"\"%s\" [shape=box];\n", node->children[i]->hostname.c_str());
 		}
 
 		if (kbs >= kbs_win)
@@ -120,7 +126,7 @@ void fprintf_nodes(FILE* fp, struct tracenode* node) {
 		else
 			fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
 
-		fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname, node->children[i]->hostname);
+		fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname.c_str(), node->children[i]->hostname.c_str());
 	}
 
 	for (i=0; i<node->num_children; i++)
@@ -137,7 +143,7 @@ void fprintf_leaf_nodes(FILE* fp, struct tracenode* node) {
 		for (i=0; i<node->num_children; i++)
 			fprintf_leaf_nodes(fp, node->children[i]);
 	} else {
-		fprintf(fp,"\"%s\";\n",node->hostname);
+		fprintf(fp,"\"%s\";\n",node->hostname.c_str());
 	}
 }
 
@@ -151,7 +157,6 @@ void free_nodes(struct tracenode* node) {
 		free_nodes(node->children[i]);
 
 	free(node->children);
-	free(node->hostname);
 }
 
 
@@ -372,7 +377,7 @@ void speed_history_readfile(FILE* logfp) {
 				if (history_length == 0)
 					speed_history = (struct host_speed*) malloc(sizeof(struct host_speed));
 				else
-					speed_history = realloc(speed_history, (history_length+1)*(sizeof(struct host_speed)));
+					speed_history = (host_speed*)realloc(speed_history, (history_length+1)*(sizeof(struct host_speed)));
 
 				speed_history[history_length].hostname = strdup(tmp);
 				speed_history[history_length].kbs = kbs;
