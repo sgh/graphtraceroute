@@ -16,6 +16,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 struct TraceNode;
 struct TraceNode {
@@ -29,7 +30,7 @@ struct TraceNode {
 
 FILE* consolefp;
 
-struct TraceNode* all_routes;
+std::map<std::string,struct TraceNode*> all_connections;
 
 struct TraceNode* ___create_node(const std::string& hostname, int kbs) {
 	struct TraceNode* ptr = new struct TraceNode;
@@ -38,121 +39,117 @@ struct TraceNode* ___create_node(const std::string& hostname, int kbs) {
 	return ptr;
 }
 
-void ___add_trace(struct TraceNode* node, std::vector<std::string>& trace, int kbs) {
-	// Return of to more hops are available
-	if (trace.size() == 0)
-		return;
-
-	if (node->kbs < kbs)
-		node->kbs = kbs;
-
-	// If current node matches
-	if (node->hostname == *trace.begin()) { // Hostname-match traverse to child nodes
-		trace.erase(trace.begin());
-		// Search children for match
-		for (unsigned i=0; i<node->children.size(); i++) {
-			if (node->children[i]->hostname == *trace.begin()) {
-				___add_trace(node->children[i], trace, kbs);
-				return;
-			}
-		}
-	}
-
-	if (trace.size() == 0)
-		return;
-
-	// If fist hostname is empty ignore it and move to the next
-	if ((*trace.begin()).length() == 0) {
-		trace.erase(trace.begin());
-		___add_trace(node, trace, kbs);
-		return;
-	}
-
-	node->children.push_back(___create_node((*trace.begin()).c_str(), kbs));
-	___add_trace(node->children.back(), trace, kbs);
-}
-
-
 void add_trace(std::vector<std::string>& trace, int kbs) {
-	if (!all_routes) { // Create initial localhost node
-		all_routes = ___create_node(*trace.begin(), kbs);
-		trace.erase(trace.begin());
-	}
+	struct TraceNode* parent = NULL;
 
-// 	fprintf(stderr, "Traversing nodes \n");
-	___add_trace(all_routes, trace, kbs);
+	while (trace.size() > 0) {
+		struct TraceNode* current;
+
+		// Skip empty hosts
+		if ((*trace.begin()).length() == 0) {
+			trace.erase(trace.begin());
+			continue;
+		}
+
+		// Find host in map
+		std::map<std::string,struct TraceNode*>::iterator connections_it = all_connections.find(*trace.begin());
+
+		if (connections_it == all_connections.end()) {
+			// Create host if it does not exist
+			current = ___create_node(*trace.begin(), kbs);
+			all_connections[*trace.begin()] = current;
+		} else
+			current = (*connections_it).second;
+		trace.erase(trace.begin());
+
+		if (current->kbs < kbs)
+			current->kbs = kbs;
+
+		// If this is not the first node then fill the parent with a pointer to this node.
+		if (parent) {
+			std::vector<struct TraceNode*>::iterator it = parent->children.begin();
+			while (it != parent->children.end()) {
+				if (current->hostname == (*it)->hostname)
+					break;
+				it++;
+			}
+			if (it == parent->children.end())
+				parent->children.push_back(current);
+		}
+
+		parent = current;
+
+	// 	fprintf(stderr, "Traversing nodes \n");
+// 		___add_trace(all_connections[*trace.begin()], trace, kbs);
+	}
 }
 
-void fprintf_nodes(FILE* fp, struct TraceNode* node) {
+void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 	const int kbs_win  = 700;
 	const int kbs_fail = 400;
 	unsigned int i;
+	std::map<std::string, struct TraceNode*>::iterator it = node_map.begin();
 
-	if (!node)
-		return;
+	while (it != node_map.end()) {
+		struct TraceNode* node = (*it).second;
 
-	for (i=0; i<node->children.size(); i++) {
-		unsigned char R = 0;
-		unsigned char G = 0;
-		unsigned char B = 0;
-		int kbs = node->children[i]->kbs;
-		if (node->children[i]->children.size() == 0) {
-			fprintf(fp,"\"%s\" [shape=box];\n", node->children[i]->hostname.c_str());
-		}
-
-		if (kbs >= kbs_win)
-			G = 0xff;
-		else if (kbs >= kbs_fail) {
-			unsigned int val = ((kbs - kbs_fail) * 512) / (kbs_win - kbs_fail);
-			if (val > 255) {
-				G = 255;
-				R = 255 - (val - 255);
-			} else {
-				R = 255;
-				G = val;
+		for (i=0; i<node->children.size(); i++) {
+			unsigned char R = 0;
+			unsigned char G = 0;
+			unsigned char B = 0;
+			int kbs = node->children[i]->kbs;
+			if (node->children[i]->children.size() == 0) {
+				fprintf(fp,"\"%s\" [shape=box];\n", node->children[i]->hostname.c_str());
 			}
-			
-// 			fprintf(stderr, "VAL: %d => %d (R:%d G:%d\n", kbs, val, R, G);
-			
-		} else
-			R = 0xff;
 
-		if (kbs == -1)
-			fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=5];\n");
-		else
-			fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
+			if (kbs >= kbs_win)
+				G = 0xff;
+			else if (kbs >= kbs_fail) {
+				unsigned int val = ((kbs - kbs_fail) * 512) / (kbs_win - kbs_fail);
+				if (val > 255) {
+					G = 255;
+					R = 255 - (val - 255);
+				} else {
+					R = 255;
+					G = val;
+				}
 
-		fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname.c_str(), node->children[i]->hostname.c_str());
-	}
+// 				fprintf(stderr, "VAL: %d => %d (R:%d G:%d\n", kbs, val, R, G);
 
-	for (i=0; i<node->children.size(); i++)
-		fprintf_nodes(fp, node->children[i]);
-}
+			} else
+				R = 0xff;
 
-void fprintf_leaf_nodes(FILE* fp, struct TraceNode* node) {
-	unsigned int i;
+			if (kbs == -1)
+				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=5];\n");
+			else
+				fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
 
-	if (!node)
-		return;
-
-	if (node->children.size() != 0) {
-		for (i=0; i<node->children.size(); i++)
-			fprintf_leaf_nodes(fp, node->children[i]);
-	} else {
-		fprintf(fp,"\"%s\";\n",node->hostname.c_str());
+			fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname.c_str(), node->children[i]->hostname.c_str());
+		}
+		it++;
 	}
 }
 
+void fprintf_leaf_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_map) {
+	std::map<std::string, struct TraceNode*>::iterator it = node_map.begin();
 
-void free_nodes(struct TraceNode* node) {
-	unsigned int i;
+	while (it != node_map.end()) {
+		struct TraceNode* node = (*it).second;
+		if (node->children.size() == 0)
+			fprintf(fp,"\"%s\";\n",node->hostname.c_str());
+		it++;
+	}
+}
 
-	if (!node)
-		return;
-	for (i=0; i<node->children.size(); i++)
-		free_nodes(node->children[i]);
 
-	node->children.clear();
+void free_nodes(std::map<std::string,struct TraceNode*>& node_map) {
+	std::map<std::string, struct TraceNode*>::iterator it = node_map.begin();
+
+	while (it != node_map.end()) {
+		delete (*it).second;
+		it++;
+	}
+	node_map.clear();
 }
 
 
@@ -487,13 +484,13 @@ int main(int argc, char* argv[]) {
 	fprintf(dotoutfp,"node [fontsize=10];\n");
 	fprintf(dotoutfp,"edge [fontsize=10, penwidth=3];\n");
 
-	fprintf_nodes(dotoutfp, all_routes);
+	fprintf_nodes(dotoutfp, all_connections);
 
 	fprintf(dotoutfp, "\n{ rank=same;\n");
-	fprintf_leaf_nodes(dotoutfp, all_routes);
+	fprintf_leaf_nodes(dotoutfp, all_connections);
 	fprintf(dotoutfp, "}\n");
 
-	free_nodes(all_routes);
+	free_nodes(all_connections);
 	fprintf(dotoutfp,"}\n");
 
 	if (logfp)              fclose(logfp);
