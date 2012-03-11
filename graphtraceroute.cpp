@@ -31,51 +31,56 @@ FILE* consolefp;
 
 struct TraceNode* all_routes;
 
-struct TraceNode* ___create_node(char* hostname, int kbs) {
-// 	fprintf(stderr, "Creating node %s\n", hostname);
+struct TraceNode* ___create_node(const std::string& hostname, int kbs) {
 	struct TraceNode* ptr = new struct TraceNode;
 	ptr->hostname = hostname;
 	ptr->kbs = kbs;	
 	return ptr;
 }
 
-void ___add_trace(struct TraceNode* node, char** trace, int numhosts, int kbs) {
-	assert(node->hostname.length());
-
-	if (*trace == NULL)
+void ___add_trace(struct TraceNode* node, std::vector<std::string>& trace, int kbs) {
+	// Return of to more hops are available
+	if (trace.size() == 0)
 		return;
 
-	if (numhosts == 0)
-		return;
-	
 	if (node->kbs < kbs)
 		node->kbs = kbs;
 
 	// If current node matches
-	if (node->hostname == *trace) { // Hostname-match traverse to child nodes
+	if (node->hostname == *trace.begin()) { // Hostname-match traverse to child nodes
+		trace.erase(trace.begin());
 		// Search children for match
-		trace++;
 		for (unsigned i=0; i<node->children.size(); i++) {
-			if (node->children[i]->hostname == *trace) {
-				___add_trace(node->children[i], trace, numhosts-1, kbs);
+			if (node->children[i]->hostname == *trace.begin()) {
+				___add_trace(node->children[i], trace, kbs);
 				return;
 			}
 		}
 	}
 
-	node->children.push_back(___create_node(*trace, kbs));
-	___add_trace(node->children[node->children.size()-1], &trace[1], numhosts-1, kbs);
+	if (trace.size() == 0)
+		return;
+
+	// If fist hostname is empty ignore it and move to the next
+	if ((*trace.begin()).length() == 0) {
+		trace.erase(trace.begin());
+		___add_trace(node, trace, kbs);
+		return;
+	}
+
+	node->children.push_back(___create_node((*trace.begin()).c_str(), kbs));
+	___add_trace(node->children.back(), trace, kbs);
 }
 
 
-void add_trace(char** trace, int numhosts, int kbs) {
+void add_trace(std::vector<std::string>& trace, int kbs) {
 	if (!all_routes) { // Create initial localhost node
-		all_routes = ___create_node(*trace, kbs);
+		all_routes = ___create_node(*trace.begin(), kbs);
+		trace.erase(trace.begin());
 	}
-	numhosts--;
 
 // 	fprintf(stderr, "Traversing nodes \n");
-	___add_trace(all_routes, trace, numhosts, kbs);
+	___add_trace(all_routes, trace, kbs);
 }
 
 void fprintf_nodes(FILE* fp, struct TraceNode* node) {
@@ -181,22 +186,19 @@ char url2host(const char* url, char* host, int hostlen) {
 	return 1;
 }
 
-void tracehost(const char* host, int kbs) {
-	char* traceroute[64];
+void tracehost(const std::string& host, int kbs) {
+	std::vector<std::string> traceroute;
 	char buffer[1024];
 	FILE* fp;
-	int i;
 	int status;
-	int max_hop = 0;
-
-	memset(traceroute, 0, sizeof(traceroute));
+	unsigned int max_hop = 0;
 
 	strcpy(buffer, "mtr --raw -c 5 ");
-	strcat(buffer, host);
+	strcat(buffer, host.c_str());
 	strcat(buffer, " 2> /dev/null");
 
 	/* Spawn mtr */
-	fprintf(consolefp, "Tracing %s   ", host);
+	fprintf(consolefp, "Tracing %s   ", host.c_str());
 	fp = popen(buffer, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "popen error\n");
@@ -206,7 +208,7 @@ void tracehost(const char* host, int kbs) {
 	unsigned int progress = 0;
 	const char progress_str[] = {'-','\\','|','/'};
 	while ( fgets(buffer, sizeof(buffer), fp) != NULL) {
-		int hop;
+		unsigned int hop;
 		char cmd;
 		char tmpbuf[1024];
 // 		fprintf(stderr,"%s\n", buffer);
@@ -224,20 +226,16 @@ void tracehost(const char* host, int kbs) {
 			max_hop = hop;
 
 		if (cmd == 'h' || cmd == 'd') {
-			if (traceroute[hop] != NULL) {
-// 				fprintf(stderr, "Freeing hop %d\n", hop);
-				free(traceroute[hop]);
-			}
-			traceroute[hop] = strdup(tmpbuf);
-// 			fprintf(stderr, "Setting hop %d %s\n", hop, traceroute[hop]);
+// 			fprintf(stderr, "Hop: %d\n", hop);
+			if (traceroute.size() <= hop)
+				traceroute.resize(hop+1);
+			traceroute[hop] = tmpbuf;
+// 			fprintf(stderr, "Setting hop %d %s\n", hop, traceroute[hop].c_str());
 		}
 
 		if (cmd == 'p' && hop == 0) {
-			if (traceroute[max_hop+1] != NULL) {
-// 				fprintf(stderr, "Freeing hop %d\n", max_hop+1);
-				free(traceroute[max_hop+1]);
-				traceroute[max_hop+1] = NULL;
-			}
+// 			fprintf(stderr, "Resizing\n");
+			traceroute.resize(max_hop+1);
 			max_hop = 0;
 		}
 	}
@@ -249,29 +247,16 @@ void tracehost(const char* host, int kbs) {
 		exit(1);
 	}
 
-	for (i=0; i<64; i++) {
-		if (i>0 && !traceroute[i-1] && traceroute[i]) {
-			traceroute[i-1] =  traceroute[i];
-			traceroute[i] = NULL;
-			i = 0;
-		}
-	}
-
-	/* Put trace into tree */
-	max_hop = 0;
-	for (i=0; i<64; i++) {
-		if (traceroute[i] == NULL)
-			break;
-		max_hop	++;
-// 		fprintf(stderr,"HOST%d: %s\n", max_hop, traceroute[i]);
-	}
 	// Add url host at the end
 // 	fprintf(stderr, "¤¤¤¤ %s %s\n", traceroute[max_hop-1], host);
-	if (strcmp(traceroute[max_hop-1], host) != 0) {
-		traceroute[max_hop] = strdup(host);
-		max_hop++;
-	}
-	add_trace(traceroute, max_hop, kbs);
+	if (traceroute[max_hop] != host)
+		traceroute[max_hop] += "\\n[" + host + "]";
+
+// 	unsigned int i;
+// 	for (i=0; i<traceroute.size(); i++)
+// 		fprintf(stderr, "TRACE[%d]: %s\n", i, traceroute[i].c_str());
+
+	add_trace(traceroute, kbs);
 }
 
 int getspeed(const char* url) {
