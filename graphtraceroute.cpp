@@ -13,10 +13,15 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 #include <string>
 #include <vector>
 #include <map>
+#include <iostream>
 
 struct TraceNode;
 struct TraceNode {
@@ -24,7 +29,9 @@ struct TraceNode {
 		kbs = 0;
 	}
 	int kbs;
+	std::string ip_address;
 	std::string hostname;
+	std::string label;
 	std::vector<struct TraceNode*> children;
 };
 
@@ -32,14 +39,29 @@ FILE* consolefp;
 
 std::map<std::string,struct TraceNode*> all_connections;
 
-struct TraceNode* ___create_node(const std::string& hostname, int kbs) {
+const std::string resolve_address(const std::string& address) {
+	int res;
+	struct sockaddr_in sa;
+	char hbuf[NI_MAXHOST];
+
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_addr.s_addr = inet_addr(address.c_str());
+
+	if ( (res = getnameinfo((struct sockaddr*)&sa, sizeof(sa), hbuf, sizeof(hbuf), NULL, 0, NI_NAMEREQD)) == 0)
+		return hbuf;
+
+	return "";
+}
+
+struct TraceNode* ___create_node(const std::string& ip_address, int kbs) {
 	struct TraceNode* ptr = new struct TraceNode;
-	ptr->hostname = hostname;
+	ptr->ip_address = ip_address;
 	ptr->kbs = kbs;	
 	return ptr;
 }
 
-void add_trace(std::vector<std::string>& trace, int kbs) {
+void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, int kbs) {
 	struct TraceNode* parent = NULL;
 
 	while (trace.size() > 0) {
@@ -69,7 +91,7 @@ void add_trace(std::vector<std::string>& trace, int kbs) {
 		if (parent) {
 			std::vector<struct TraceNode*>::iterator it = parent->children.begin();
 			while (it != parent->children.end()) {
-				if (current->hostname == (*it)->hostname)
+				if (current->ip_address == (*it)->ip_address)
 					break;
 				it++;
 			}
@@ -77,11 +99,64 @@ void add_trace(std::vector<std::string>& trace, int kbs) {
 				parent->children.push_back(current);
 		}
 
+		if (trace.size() == 0)
+			current->label = leaflabel;
 		parent = current;
-
-	// 	fprintf(stderr, "Traversing nodes \n");
-// 		___add_trace(all_connections[*trace.begin()], trace, kbs);
 	}
+}
+
+std::string pretty_print(const struct TraceNode* node) {
+	std::string pretty;
+
+	if (node->hostname.length())
+		pretty += node->hostname + "\\n";
+
+	pretty += node->ip_address;
+
+	if (node->label.length())
+		pretty += "\\n" + node->label;
+
+	return pretty;
+}
+
+void* resolver_thread(void* arg) {
+	struct TraceNode* node = (struct TraceNode*)arg;
+	node->hostname = resolve_address(node->ip_address);
+	return NULL;
+}
+
+void resolve_ips(std::map<std::string,struct TraceNode*> node_map) {
+	int res;
+	pthread_attr_t attr;
+	std::vector<pthread_t> v_threads;
+	std::vector<pthread_t>::iterator threads_it;
+	std::map<std::string, struct TraceNode*>::iterator map_it = node_map.begin();
+
+	res = pthread_attr_init(&attr);
+	if (res != 0)
+		std::cerr << "Error initializing pthread_attr" << std::endl;
+
+	fprintf(consolefp, "Resolving %d ip addresses to names ...", node_map.size());
+	fflush(consolefp);
+	while (map_it != node_map.end()) {
+		pthread_t tmp_pthread;
+		struct TraceNode* node = (*map_it).second;
+		res = pthread_create(&tmp_pthread , &attr, &resolver_thread, node);
+		if (res != 0)
+			std::cerr << "Error starting thread" << std::endl;
+		else
+			v_threads.push_back(tmp_pthread);
+		map_it++;
+	}
+
+	threads_it = v_threads.begin();
+	while (threads_it != v_threads.end()) {
+		res = pthread_join(*threads_it, NULL);
+		if (res != 0)
+			std::cerr << "Error joining thread" << std::endl;
+		threads_it++;
+	}
+	fprintf(consolefp, "\n");
 }
 
 void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
@@ -99,7 +174,7 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 			unsigned char B = 0;
 			int kbs = node->children[i]->kbs;
 			if (node->children[i]->children.size() == 0) {
-				fprintf(fp,"\"%s\" [shape=box];\n", node->children[i]->hostname.c_str());
+				fprintf(fp,"\"%s\" [shape=box];\n", pretty_print(node->children[i]).c_str());
 			}
 
 			if (kbs >= kbs_win)
@@ -120,11 +195,11 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 				R = 0xff;
 
 			if (kbs == -1)
-				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=5];\n");
+				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=5];\n")	;
 			else
 				fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
 
-			fprintf(fp,"\"%s\" -> \"%s\";\n", node->hostname.c_str(), node->children[i]->hostname.c_str());
+			fprintf(fp,"\"%s\" -> \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i]).c_str());
 		}
 		it++;
 	}
@@ -136,7 +211,7 @@ void fprintf_leaf_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_
 	while (it != node_map.end()) {
 		struct TraceNode* node = (*it).second;
 		if (node->children.size() == 0)
-			fprintf(fp,"\"%s\";\n",node->hostname.c_str());
+			fprintf(fp,"\"%s\";\n",pretty_print(node).c_str());
 		it++;
 	}
 }
@@ -190,7 +265,7 @@ void tracehost(const std::string& host, int kbs) {
 	int status;
 	unsigned int max_hop = 0;
 
-	strcpy(buffer, "mtr --raw -c 5 ");
+	strcpy(buffer, "mtr --raw -n -c 1 ");
 	strcat(buffer, host.c_str());
 	strcat(buffer, " 2> /dev/null");
 
@@ -213,11 +288,13 @@ void tracehost(const std::string& host, int kbs) {
 		if (sscanf(buffer, "%c %d %s", &cmd, &hop, tmpbuf) != 3)
 			continue;
 
-		if (consolefp) fprintf(consolefp, "\b\b%c ",progress_str[progress]);
-		fflush(stdout);
-		progress ++;
-		if (progress >= sizeof(progress_str))
-			progress = 0;
+		if (cmd == 'p') {
+			if (consolefp) fprintf(consolefp, "\b\b%c ",progress_str[progress]);
+			fflush(stdout);
+			progress ++;
+			if (progress >= sizeof(progress_str))
+				progress = 0;
+		}
 
 		if (hop > max_hop)
 			max_hop = hop;
@@ -231,12 +308,11 @@ void tracehost(const std::string& host, int kbs) {
 		}
 
 		if (cmd == 'p' && hop == 0) {
-// 			fprintf(stderr, "Resizing\n");
-			traceroute.resize(max_hop+1);
 			max_hop = 0;
 		}
 	}
-	if (consolefp) fprintf(consolefp, "\n");
+	traceroute.resize(max_hop+1);
+	if (consolefp) fprintf(consolefp, "\b\b  \n");
 
 	status = pclose(fp);
 	if (status == -1) {
@@ -244,16 +320,18 @@ void tracehost(const std::string& host, int kbs) {
 		exit(1);
 	}
 
-	// Add url host at the end
-// 	fprintf(stderr, "¤¤¤¤ %s %s\n", traceroute[max_hop-1], host);
-	if (traceroute[max_hop] != host)
-		traceroute[max_hop] += "\\n[" + host + "]";
+	// Remove duplicate hosts
+	unsigned int i;
+	for (i=1; i<traceroute.size(); i++) {
+		if (traceroute[i-1] == traceroute[i])
+			traceroute[i-1] = "";
+	}
 
 // 	unsigned int i;
 // 	for (i=0; i<traceroute.size(); i++)
 // 		fprintf(stderr, "TRACE[%d]: %s\n", i, traceroute[i].c_str());
 
-	add_trace(traceroute, kbs);
+	add_trace(traceroute, host, kbs);
 }
 
 int getspeed(const char* url) {
@@ -479,6 +557,8 @@ int main(int argc, char* argv[]) {
 		tracehost(host, kbs);
 		idx++;
 	}
+
+	resolve_ips(all_connections);
 
 	fprintf(dotoutfp,"digraph A  {\n");
 	fprintf(dotoutfp,"node [fontsize=10];\n");
