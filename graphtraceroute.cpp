@@ -67,12 +67,6 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 	while (trace.size() > 0) {
 		struct TraceNode* current;
 
-		// Skip empty hosts
-		if ((*trace.begin()).length() == 0) {
-			trace.erase(trace.begin());
-			continue;
-		}
-
 		// Find host in map
 		std::map<std::string,struct TraceNode*>::iterator connections_it = all_connections.find(*trace.begin());
 
@@ -260,6 +254,7 @@ char url2host(const char* url, char* host, int hostlen) {
 
 void tracehost(const std::string& host, int kbs) {
 	std::vector<std::string> traceroute;
+	std::vector<std::string>::iterator it;
 	char buffer[1024];
 	FILE* fp;
 	int status;
@@ -320,11 +315,12 @@ void tracehost(const std::string& host, int kbs) {
 		exit(1);
 	}
 
-	// Remove duplicate hosts
-	unsigned int i;
-	for (i=1; i<traceroute.size(); i++) {
-		if (traceroute[i-1] == traceroute[i])
-			traceroute[i-1] = "";
+	// Remove duplicate and empty hosts
+	for (it = traceroute.begin()+1; it != traceroute.end(); it++) {
+		if ( *(it-1) == *it) {
+			traceroute.erase(it);
+			it = traceroute.begin();
+		}
 	}
 
 // 	unsigned int i;
