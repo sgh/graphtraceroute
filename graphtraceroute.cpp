@@ -19,22 +19,26 @@
 #include <arpa/inet.h>
 
 #include <string>
+#include <sstream>
 #include <vector>
 #include <map>
 #include <iostream>
 
+struct TraceConnection {
+	struct TraceNode* node;
+	int kbs;
+};
+
 struct TraceNode;
 struct TraceNode {
 	TraceNode() {
-		kbs = 0;
 		root = false;
 	}
-	int kbs;
 	std::string ip_address;
 	std::string hostname;
 	std::string label;
 	bool root;
-	std::vector<struct TraceNode*> children;
+	std::vector<struct TraceConnection> children;
 };
 
 FILE* consolefp;
@@ -56,10 +60,9 @@ const std::string resolve_address(const std::string& address) {
 	return "";
 }
 
-struct TraceNode* ___create_node(const std::string& ip_address, int kbs) {
+struct TraceNode* ___create_node(const std::string& ip_address) {
 	struct TraceNode* ptr = new struct TraceNode;
 	ptr->ip_address = ip_address;
-	ptr->kbs = kbs;	
 	return ptr;
 }
 
@@ -75,7 +78,7 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 
 		if (connections_it == all_connections.end()) {
 			// Create host if it does not exist
-			current = ___create_node(*trace.begin(), kbs);
+			current = ___create_node(*trace.begin());
 			all_connections[*trace.begin()] = current;
 		} else
 			current = (*connections_it).second;
@@ -87,19 +90,24 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 			root = false;
 		}
 
-		if (current->kbs < kbs)
-			current->kbs = kbs;
-
 		// If this is not the first node then fill the parent with a pointer to this node.
 		if (parent) {
-			std::vector<struct TraceNode*>::iterator it = parent->children.begin();
+			std::vector<struct TraceConnection>::iterator it = parent->children.begin();
 			while (it != parent->children.end()) {
-				if (current->ip_address == (*it)->ip_address)
+				if (current->ip_address == (*it).node->ip_address)
 					break;
 				it++;
 			}
-			if (it == parent->children.end())
-				parent->children.push_back(current);
+			if (it == parent->children.end()) {
+				TraceConnection tc;
+				tc.node = current;
+				tc.kbs = -1;
+				parent->children.push_back(tc);
+				it = parent->children.end() - 1;
+			}
+
+			if ((*it).kbs < kbs)
+				(*it).kbs = kbs;
 		}
 
 		if (trace.size() == 0)
@@ -135,9 +143,14 @@ void resolve_ips(std::map<std::string,struct TraceNode*> node_map) {
 	std::vector<pthread_t>::iterator threads_it;
 	std::map<std::string, struct TraceNode*>::iterator map_it = node_map.begin();
 
+	// Bail out if the map is empty
+	if (node_map.size() == 0)
+		return;
+
 	res = pthread_attr_init(&attr);
 	if (res != 0)
 		std::cerr << "Error initializing pthread_attr" << std::endl;
+
 
 	fprintf(consolefp, "Resolving %d ip addresses to names ...", node_map.size());
 	fflush(consolefp);
@@ -175,9 +188,9 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 			unsigned char R = 0;
 			unsigned char G = 0;
 			unsigned char B = 0;
-			int kbs = node->children[i]->kbs;
-			if (node->children[i]->children.size() == 0) {
-				fprintf(fp,"\"%s\" [shape=box];\n", pretty_print(node->children[i]).c_str());
+			int kbs = node->children[i].kbs;
+			if (node->children[i].node->children.size() == 0) {
+				fprintf(fp,"\"%s\" [shape=box];\n", pretty_print(node->children[i].node).c_str());
 			}
 
 			if (kbs >= kbs_win)
@@ -202,7 +215,8 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 			else
 				fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
 
-			fprintf(fp,"\"%s\" -> \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i]).c_str());
+// 			fprintf(fp,"\"%s\" -> \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i].node).c_str());
+			fprintf(fp,"\"%s\" -- \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i].node).c_str());
 		}
 		it++;
 	}
@@ -224,8 +238,9 @@ void fprintf_root_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_
 
 	while (it != node_map.end()) {
 		struct TraceNode* node = (*it).second;
-		if (node->root)
-			fprintf(fp,"\"%s\";\n",pretty_print(node).c_str());
+		if (node->root) {
+			fprintf(fp,"\"%s\" [shape=diamond,color=blue, penwidth=4];\n",pretty_print(node).c_str());
+		}
 		it++;
 	}
 }
@@ -271,7 +286,71 @@ char url2host(const char* url, char* host, int hostlen) {
 	return 1;
 }
 
-void tracehost(const std::string& host, int kbs) {
+void Tokenize(const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters = " ") {
+    // Skip delimiters at beginning.
+    std::string::size_type lastPos = str.find_first_not_of(delimiters, 0);
+    // Find first "non-delimiter".
+    std::string::size_type pos     = str.find_first_of(delimiters, lastPos);
+
+    while (std::string::npos != pos || std::string::npos != lastPos)
+    {
+        // Found a token, add it to the vector.
+        tokens.push_back(str.substr(lastPos, pos - lastPos));
+        // Skip delimiters.  Note the "not_of"
+        lastPos = str.find_first_not_of(delimiters, pos);
+        // Find next "non-delimiter"
+        pos = str.find_first_of(delimiters, lastPos);
+    }
+}
+
+void write_trace_entry(FILE* tracefp, const std::vector<std::string>& traceroute, std::string host, int speed) {
+	std::vector<std::string>::const_iterator it = traceroute.begin();
+
+	if (!tracefp)
+		return;
+
+	fprintf(tracefp,"%s %d ", host.c_str(), speed);
+	while (it != traceroute.end()) {
+		fprintf(tracefp,"%s ", (*it).c_str());
+		it++;
+	}
+	fprintf(tracefp,"\n");
+}
+
+void read_trace(const std::vector<std::string>& l_filenames) {
+	int speed;
+	std::string host;
+	std::vector<std::string> traceroute;
+	std::vector<std::string>::const_iterator it;
+	char buffer[4096];
+
+	it = l_filenames.begin();
+
+	while (it != l_filenames.end()) {
+		FILE* fp = fopen((*it).c_str(), "r");
+		if (fp) {
+			while ( fgets(buffer, sizeof(buffer), fp) != NULL) {
+				traceroute.clear();
+				Tokenize(buffer, traceroute, " \n\r");
+
+				// First token is the hostname
+				host = traceroute.front();
+				traceroute.erase(traceroute.begin());
+
+				// Second token is the speed
+				std::istringstream(*traceroute.begin()) >> speed;
+				traceroute.erase(traceroute.begin());
+
+				add_trace(traceroute,host,speed);
+			}
+			fclose(fp);
+		} else
+			fprintf(stderr, "Unable to open file %s\n", (*it).c_str());
+		it++;
+	}
+}
+
+void tracehost(FILE* tracefp, const std::string& host, int kbs) {
 	std::vector<std::string> traceroute;
 	std::vector<std::string>::iterator it;
 	char buffer[1024];
@@ -336,15 +415,24 @@ void tracehost(const std::string& host, int kbs) {
 
 	// Remove duplicate and empty hosts
 	for (it = traceroute.begin()+1; it != traceroute.end(); it++) {
-		if ( *(it-1) == *it) {
-			traceroute.erase(it);
-			it = traceroute.begin();
+		// Remove duplicate
+		if ( it != traceroute.begin() ) {
+			if (*(it-1) == *it) {
+				traceroute.erase(it);
+				it = traceroute.begin();
+			}
 		}
+
+		// Remove empty host
+		if ( (*it).empty())
+			traceroute.erase(it);
 	}
 
 // 	unsigned int i;
 // 	for (i=0; i<traceroute.size(); i++)
 // 		fprintf(stderr, "TRACE[%d]: %s\n", i, traceroute[i].c_str());
+
+	write_trace_entry(tracefp, traceroute, host, kbs);
 
 	add_trace(traceroute, host, kbs);
 }
@@ -487,6 +575,8 @@ void print_usage() {
 		{"-f <file>", "Read URLS from <file>. (default: stdin)"},
 		{"-l <file>", "Log speeds to <file>"},
 		{"-o <file>", "Write DOT-output to <file>. (default: stdout)"},
+		{"-t <file>", "Write trace to <file>"},
+		{"-t <file>", "Read trace from <file>"},
 		{"-q", "Be quiet"},
 		{NULL, NULL},
 	};
@@ -502,13 +592,15 @@ void print_usage() {
 int main(int argc, char* argv[]) {
 	char host[1024];
 	char url[1024];
-	FILE* dotoutfp = stdout;
+	FILE* dotoutfp = NULL;
 	FILE* logfp = NULL;
-	FILE* urlsfp = stdin;
+	FILE* urlsfp = NULL;
+	FILE* tracefp = NULL;
 	consolefp =  stderr;
-	
+	std::vector<std::string> l_tracefiles;
+
 	int option_charater;
-	while ((option_charater = getopt(argc, argv, "o:f:l:q")) != -1) {
+	while ((option_charater = getopt(argc, argv, "o:f:l:qt:r:")) != -1) {
 // 		printf("%d %s\n", optind, optarg);
 		switch (option_charater) {
 			case 'o':
@@ -516,8 +608,6 @@ int main(int argc, char* argv[]) {
 					fprintf(stderr,"Unable to open outputfile\n");
 					return 1;
 				}
-				if (consolefp)
-					consolefp = stdout;
 				break;
 			case 'f':
 				if (!(urlsfp = fopen(optarg,"a+"))) {
@@ -535,6 +625,15 @@ int main(int argc, char* argv[]) {
 			case 'q':
 				consolefp = NULL;
 				break;
+			case 't':
+				if (!(tracefp = fopen(optarg, "w+"))) {
+					fprintf(stderr,"Update to open tracefile %s", optarg);
+					return 1;
+				}
+				break;
+			case 'r':
+				l_tracefiles.push_back(optarg);
+				break;
 			case '?':
 				print_usage();
 				exit(1);
@@ -546,7 +645,7 @@ int main(int argc, char* argv[]) {
 	int idx = 0; 
 
 	idx=0;
-	while (fgets(url, sizeof(url), urlsfp) != NULL && !feof(urlsfp)) {
+	while (urlsfp && fgets(url, sizeof(url), urlsfp) != NULL && !feof(urlsfp)) {
 		char meassure_speed = 1;
 		int len = strlen(url);
 		int kbs;
@@ -569,32 +668,34 @@ int main(int argc, char* argv[]) {
 
 			kbs = speed_history_avr_kbs(host, kbs);
 		}
-		tracehost(host, kbs);
+		tracehost(tracefp, host, kbs);
 		idx++;
 	}
 
+	read_trace(l_tracefiles);
 	resolve_ips(all_connections);
 
-	fprintf(dotoutfp,"digraph A  {\n");
-	fprintf(dotoutfp,"node [fontsize=10];\n");
-	fprintf(dotoutfp,"edge [fontsize=10, penwidth=3];\n");
+	if (dotoutfp) {
+// 		fprintf(dotoutfp,"digraph A  {\n");
+		fprintf(dotoutfp,"graph A  { overlap=scale; ranksep=0;\n");
 
-	fprintf_nodes(dotoutfp, all_connections);
+		fprintf_nodes(dotoutfp, all_connections);
 
-	fprintf(dotoutfp, "\n{ rank=same;\n");
-	fprintf_leaf_nodes(dotoutfp, all_connections);
-	fprintf(dotoutfp, "}\n");
-	
-	fprintf(dotoutfp, "\n{ rank=same;\n");
-	fprintf_root_nodes(dotoutfp, all_connections);
-	fprintf(dotoutfp, "}\n");
+// 		fprintf(dotoutfp, "\n{ rank=same;\n");
+// 		fprintf_leaf_nodes(dotoutfp, all_connections);
+// 		fprintf(dotoutfp, "}\n");
 
+// 		fprintf(dotoutfp, "\n{ rank=same;\n");
+		fprintf_root_nodes(dotoutfp, all_connections);
+// 		fprintf(dotoutfp, "}\n");
+		fprintf(dotoutfp,"}\n");
+	}
 	free_nodes(all_connections);
-	fprintf(dotoutfp,"}\n");
 
 	if (logfp)              fclose(logfp);
-	if (urlsfp != stdin)    fclose(urlsfp);
-	if (dotoutfp != stdout) fclose(dotoutfp);
+	if (urlsfp)             fclose(urlsfp);
+	if (dotoutfp)           fclose(dotoutfp);
+	if (tracefp)            fclose(tracefp);
 
 	return 0;
 }
