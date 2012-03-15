@@ -27,11 +27,13 @@ struct TraceNode;
 struct TraceNode {
 	TraceNode() {
 		kbs = 0;
+		root = false;
 	}
 	int kbs;
 	std::string ip_address;
 	std::string hostname;
 	std::string label;
+	bool root;
 	std::vector<struct TraceNode*> children;
 };
 
@@ -63,6 +65,7 @@ struct TraceNode* ___create_node(const std::string& ip_address, int kbs) {
 
 void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, int kbs) {
 	struct TraceNode* parent = NULL;
+	bool root = true;
 
 	while (trace.size() > 0) {
 		struct TraceNode* current;
@@ -77,6 +80,12 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 		} else
 			current = (*connections_it).second;
 		trace.erase(trace.begin());
+
+		// First node of each seperate trace is always a root
+		if (root) {
+			current->root = true;
+			root = false;
+		}
 
 		if (current->kbs < kbs)
 			current->kbs = kbs;
@@ -210,6 +219,16 @@ void fprintf_leaf_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_
 	}
 }
 
+void fprintf_root_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_map) {
+	std::map<std::string, struct TraceNode*>::iterator it = node_map.begin();
+
+	while (it != node_map.end()) {
+		struct TraceNode* node = (*it).second;
+		if (node->root)
+			fprintf(fp,"\"%s\";\n",pretty_print(node).c_str());
+		it++;
+	}
+}
 
 void free_nodes(std::map<std::string,struct TraceNode*>& node_map) {
 	std::map<std::string, struct TraceNode*>::iterator it = node_map.begin();
@@ -564,6 +583,10 @@ int main(int argc, char* argv[]) {
 
 	fprintf(dotoutfp, "\n{ rank=same;\n");
 	fprintf_leaf_nodes(dotoutfp, all_connections);
+	fprintf(dotoutfp, "}\n");
+	
+	fprintf(dotoutfp, "\n{ rank=same;\n");
+	fprintf_root_nodes(dotoutfp, all_connections);
 	fprintf(dotoutfp, "}\n");
 
 	free_nodes(all_connections);
