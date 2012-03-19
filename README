@@ -13,21 +13,45 @@ Compiling
 
 $ make
 
+
 Requirements
 ============
 
 The application requires "wget" and "mtr" to be installed on the system.
 
-Usage
-=====
+
+Basic usage
+===========
 
 GraphTraceroute is executed from the commandline. You must supply it with a
 file containing the URLS to fetch and trace or just bare hostname if you only
 want a trace.
 
-$ graphtraceroute -f myurls.lst -o myurls.dot
+$ ./graphtraceroute -f myurls.lst -o myurls.dot
 
 $ dot -Tpng myurls.dot -o myurls.png
 
 Now you should have a nice png containing the graph of the traceroute to all
 hosts listed in "myurls.lst"
+
+To list available commandline options use the "-h" argument
+
+$ ./graphtraceroute -h
+
+
+Storing and using trace-files
+=============================
+
+You can store the meassured speeds and routes for later replay and correlation
+against other runs. To store a trace use the "-t" argument, like this.
+
+$ ./graphtraceroute -f myurls.lst -o myurls.dot -t myurls.trace
+
+This will gerenate the DOT-output as before but also "myurls.trace" containing
+speeds and routes.
+
+To use stored traces to generate DOT-output you can ommit the "-f" parameter.
+
+$ ./graphtraceroute -o myurls.dot -r myurls.trace -r someotherurls.trace
+
+This will generate DOT-output from the traces in "myurls.trace" and "someotherurls.trace"
