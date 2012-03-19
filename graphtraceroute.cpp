@@ -644,6 +644,7 @@ int main(int argc, char* argv[]) {
 	int idx = 0; 
 
 	idx=0;
+	read_trace(l_tracefiles);
 	while (urlsfp && fgets(url, sizeof(url), urlsfp) != NULL && !feof(urlsfp)) {
 		char meassure_speed = 1;
 		int len = strlen(url);
@@ -671,10 +672,8 @@ int main(int argc, char* argv[]) {
 		idx++;
 	}
 
-	read_trace(l_tracefiles);
-	resolve_ips(all_connections);
-
 	if (dotoutfp) {
+		resolve_ips(all_connections);
 		fprintf(dotoutfp,"graph A  { outputMode=nodesfirst\n");
 		fprintf(dotoutfp, "node  [style=rounded, shape=box]\n");
 
