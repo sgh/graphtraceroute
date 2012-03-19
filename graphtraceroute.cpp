@@ -190,7 +190,7 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 			unsigned char B = 0;
 			int kbs = node->children[i].kbs;
 			if (node->children[i].node->children.size() == 0) {
-				fprintf(fp,"\"%s\" [shape=box];\n", pretty_print(node->children[i].node).c_str());
+				fprintf(fp,"\"%s\" [shape=box, color=blue];\n", pretty_print(node->children[i].node).c_str());
 			}
 
 			if (kbs >= kbs_win)
@@ -211,11 +211,10 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 				R = 0xff;
 
 			if (kbs == -1)
-				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=5];\n")	;
+				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=2];\n")	;
 			else
-				fprintf(fp,"\nedge [label=\"%d KB/s\", color=\"#%02X%02X%02X\", penwidth=5];\n", kbs, R, G, B);
+				fprintf(fp,"\nedge [label=\"%dKB\", color=\"#%02X%02X%02X\", penwidth=2];\n", kbs, R, G, B);
 
-// 			fprintf(fp,"\"%s\" -> \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i].node).c_str());
 			fprintf(fp,"\"%s\" -- \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i].node).c_str());
 		}
 		it++;
@@ -239,7 +238,7 @@ void fprintf_root_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_
 	while (it != node_map.end()) {
 		struct TraceNode* node = (*it).second;
 		if (node->root) {
-			fprintf(fp,"\"%s\" [shape=diamond,color=blue, penwidth=4];\n",pretty_print(node).c_str());
+			fprintf(fp,"\"%s\" [shape=diamond,color=blue, penwidth=3];\n",pretty_print(node).c_str());
 		}
 		it++;
 	}
@@ -576,7 +575,7 @@ void print_usage() {
 		{"-l <file>", "Log speeds to <file>"},
 		{"-o <file>", "Write DOT-output to <file>. (default: stdout)"},
 		{"-t <file>", "Write trace to <file>"},
-		{"-t <file>", "Read trace from <file>"},
+		{"-r <file>", "Read trace from <file>"},
 		{"-q", "Be quiet"},
 		{NULL, NULL},
 	};
@@ -676,18 +675,18 @@ int main(int argc, char* argv[]) {
 	resolve_ips(all_connections);
 
 	if (dotoutfp) {
-// 		fprintf(dotoutfp,"digraph A  {\n");
-		fprintf(dotoutfp,"graph A  { overlap=scale; ranksep=0;\n");
+		fprintf(dotoutfp,"graph A  { outputMode=nodesfirst\n");
+		fprintf(dotoutfp, "node  [style=rounded, shape=box]\n");
 
 		fprintf_nodes(dotoutfp, all_connections);
 
-// 		fprintf(dotoutfp, "\n{ rank=same;\n");
-// 		fprintf_leaf_nodes(dotoutfp, all_connections);
-// 		fprintf(dotoutfp, "}\n");
+		fprintf(dotoutfp, "\n{ rank=same;\n");
+		fprintf_leaf_nodes(dotoutfp, all_connections);
+		fprintf(dotoutfp, "}\n");
 
-// 		fprintf(dotoutfp, "\n{ rank=same;\n");
+		fprintf(dotoutfp, "\n{ rank=same;\n");
 		fprintf_root_nodes(dotoutfp, all_connections);
-// 		fprintf(dotoutfp, "}\n");
+		fprintf(dotoutfp, "}\n");
 		fprintf(dotoutfp,"}\n");
 	}
 	free_nodes(all_connections);
