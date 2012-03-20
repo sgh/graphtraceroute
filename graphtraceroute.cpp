@@ -152,8 +152,10 @@ void resolve_ips(std::map<std::string,struct TraceNode*> node_map) {
 		std::cerr << "Error initializing pthread_attr" << std::endl;
 
 
-	fprintf(consolefp, "Resolving %d ip addresses to names ...", node_map.size());
-	fflush(consolefp);
+	if (consolefp) {
+		fprintf(consolefp, "Resolving %d ip addresses to names ...", node_map.size());
+		fflush(consolefp);
+	}
 	while (map_it != node_map.end()) {
 		pthread_t tmp_pthread;
 		struct TraceNode* node = (*map_it).second;
@@ -172,7 +174,8 @@ void resolve_ips(std::map<std::string,struct TraceNode*> node_map) {
 			std::cerr << "Error joining thread" << std::endl;
 		threads_it++;
 	}
-	fprintf(consolefp, "\n");
+	if (consolefp)
+		fprintf(consolefp, "\n");
 }
 
 void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
@@ -362,7 +365,8 @@ void tracehost(FILE* tracefp, const std::string& host, int kbs) {
 	strcat(buffer, " 2> /dev/null");
 
 	/* Spawn mtr */
-	fprintf(consolefp, "Tracing %s   ", host.c_str());
+	if (consolefp)
+		fprintf(consolefp, "Tracing %s   ", host.c_str());
 	fp = popen(buffer, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "popen error\n");
@@ -381,8 +385,10 @@ void tracehost(FILE* tracefp, const std::string& host, int kbs) {
 			continue;
 
 		if (cmd == 'p') {
-			if (consolefp) fprintf(consolefp, "\b\b%c ",progress_str[progress]);
-			fflush(stdout);
+			if (consolefp) {
+				fprintf(consolefp, "\b\b%c ",progress_str[progress]);
+				fflush(consolefp);
+			}
 			progress ++;
 			if (progress >= sizeof(progress_str))
 				progress = 0;
