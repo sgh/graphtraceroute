@@ -335,6 +335,10 @@ void read_trace(const std::vector<std::string>& l_filenames) {
 				traceroute.clear();
 				Tokenize(buffer, traceroute, " \n\r");
 
+				// Skip empty lines
+				if (traceroute.size() < 3)
+					continue;
+
 				// First token is the hostname
 				host = traceroute.front();
 				traceroute.erase(traceroute.begin());
