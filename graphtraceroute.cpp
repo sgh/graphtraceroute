@@ -550,32 +550,6 @@ void speed_history_readfile(FILE* logfp) {
 	}
 }
 
-const struct host_speed* speed_history_max_kbs(const char* hostname) {
-	int idx;
-	struct host_speed* sh = NULL;
-	for (idx=0; idx<history_length; idx++) {
-		if (strcmp(speed_history[idx].hostname, hostname) == 0) {
-			if (!sh || sh->kbs < speed_history[idx].kbs)
-				sh = &speed_history[idx];
-		}
-	}
-	return sh;
-}
-
-int speed_history_avr_kbs(const char* hostname, int kbs) {
-	int idx;
-	char matches = 0;
-	float val = 0;
-	for (idx=0; idx<history_length; idx++) {
-		if (strcmp(speed_history[idx].hostname, hostname) == 0) {
-			val = matches ? val*0.9 + ((float)speed_history[idx].kbs)*0.1 : kbs;
-			matches++;
-		}
-	}
-	val = matches ? val*0.9 + kbs*0.1 : kbs;
-	return val;
-}
-
 void print_usage() {
 	struct usage_option {
 		const char* opt;
@@ -602,7 +576,6 @@ int main(int argc, char* argv[]) {
 	char host[1024];
 	char url[1024];
 	FILE* dotoutfp = NULL;
-	FILE* logfp = NULL;
 	FILE* urlsfp = NULL;
 	FILE* tracefp = NULL;
 	consolefp =  stderr;
@@ -623,13 +596,6 @@ int main(int argc, char* argv[]) {
 					fprintf(stderr,"Unable to open inputfile: %s\n", optarg);
 					return 1;
 				}
-				break;
-			case 'l':
-				if (!(logfp = fopen(optarg,"a+"))) {
-					fprintf(stderr,"Unable to open logfile %s\n", optarg);
-					return 1;
-				}
-				speed_history_readfile(logfp);
 				break;
 			case 'q':
 				consolefp = NULL;
@@ -671,13 +637,9 @@ int main(int argc, char* argv[]) {
 			meassure_speed = 0;
 
 		kbs = -1;
-		if (meassure_speed) {
+		if (meassure_speed)
 			kbs = getspeed(url);
-			if (logfp && kbs != -1)
-				fprintf(logfp, "%s %d\n", host, kbs);
 
-			kbs = speed_history_avr_kbs(host, kbs);
-		}
 		tracehost(tracefp, host, kbs);
 		idx++;
 	}
@@ -701,7 +663,6 @@ int main(int argc, char* argv[]) {
 	}
 	free_nodes(all_connections);
 
-	if (logfp)              fclose(logfp);
 	if (urlsfp)             fclose(urlsfp);
 	if (dotoutfp)           fclose(dotoutfp);
 	if (tracefp)            fclose(tracefp);
