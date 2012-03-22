@@ -249,7 +249,7 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 			if (kbs == -1)
 				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=2];\n")	;
 			else
-				fprintf(fp,"\nedge [label=\"%dKB @ %d\", color=\"#%02X%02X%02X%s\", penwidth=2];\n", kbs, node->children[i].rootbitmap, R, G, B, get_colorlist(node->children[i]).c_str());
+				fprintf(fp,"\nedge [label=\"%dKB\", color=\"#%02X%02X%02X%s\", penwidth=2];\n", kbs, R, G, B, get_colorlist(node->children[i]).c_str());
 
 			fprintf(fp,"\"%s\" -- \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i].node).c_str());
 		}
