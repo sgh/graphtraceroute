@@ -24,20 +24,28 @@
 #include <map>
 #include <iostream>
 
+int global_rootbitmap_count = 1;
+
 struct TraceConnection {
+	TraceConnection() {
+		node = NULL;
+		kbs = -1;
+		rootbitmap = 0;
+	}
 	struct TraceNode* node;
 	int kbs;
+	unsigned int rootbitmap;
 };
 
 struct TraceNode;
 struct TraceNode {
 	TraceNode() {
-		root = false;
+		rootid = 0;
 	}
 	std::string ip_address;
 	std::string hostname;
 	std::string label;
-	bool root;
+	unsigned int rootid;
 	std::vector<struct TraceConnection> children;
 };
 
@@ -69,6 +77,7 @@ struct TraceNode* ___create_node(const std::string& ip_address) {
 void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, int kbs) {
 	struct TraceNode* parent = NULL;
 	bool root = true;
+	unsigned int rootid = 0;
 
 	while (trace.size() > 0) {
 		struct TraceNode* current;
@@ -86,7 +95,9 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 
 		// First node of each seperate trace is always a root
 		if (root) {
-			current->root = true;
+			if (!current->rootid)
+				current->rootid = global_rootbitmap_count++;
+			rootid = current->rootid;
 			root = false;
 		}
 
@@ -101,13 +112,13 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 			if (it == parent->children.end()) {
 				TraceConnection tc;
 				tc.node = current;
-				tc.kbs = -1;
 				parent->children.push_back(tc);
 				it = parent->children.end() - 1;
 			}
 
 			if ((*it).kbs < kbs)
 				(*it).kbs = kbs;
+			(*it).rootbitmap |= 1<<(rootid-1);
 		}
 
 		if (trace.size() == 0)
@@ -178,6 +189,28 @@ void resolve_ips(std::map<std::string,struct TraceNode*> node_map) {
 		fprintf(consolefp, "\n");
 }
 
+std::string get_rootid_color(int rootid) {
+	switch (rootid) {
+		case 1: return "#007FFF";
+		case 2: return "#8000FF";
+	}
+	return "";
+}
+
+std::string get_colorlist(const TraceConnection& tc) {
+	std::string colorlist;
+	if (tc.rootbitmap & 1)
+		colorlist += get_rootid_color(1) + ":white:white:white:";
+
+	if (tc.rootbitmap & 2) {
+		colorlist += get_rootid_color(2) + ":white:white:white:";
+	}
+	if (colorlist.length() > 0)
+		colorlist = ":white:white:white:" + colorlist;
+
+	return colorlist;
+}
+
 void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 	const int kbs_win  = 700;
 	const int kbs_fail = 400;
@@ -216,7 +249,7 @@ void fprintf_nodes(FILE* fp, std::map<std::string,struct TraceNode*> node_map) {
 			if (kbs == -1)
 				fprintf(fp,"\nedge [label=\"\", color=\"#000000\", penwidth=2];\n")	;
 			else
-				fprintf(fp,"\nedge [label=\"%dKB\", color=\"#%02X%02X%02X\", penwidth=2];\n", kbs, R, G, B);
+				fprintf(fp,"\nedge [label=\"%dKB @ %d\", color=\"#%02X%02X%02X%s\", penwidth=2];\n", kbs, node->children[i].rootbitmap, R, G, B, get_colorlist(node->children[i]).c_str());
 
 			fprintf(fp,"\"%s\" -- \"%s\";\n",pretty_print(node).c_str(), pretty_print(node->children[i].node).c_str());
 		}
@@ -240,8 +273,8 @@ void fprintf_root_nodes(FILE* fp, std::map<std::string,struct TraceNode*>& node_
 
 	while (it != node_map.end()) {
 		struct TraceNode* node = (*it).second;
-		if (node->root) {
-			fprintf(fp,"\"%s\" [shape=diamond,color=blue, penwidth=3];\n",pretty_print(node).c_str());
+		if (node->rootid) {
+			fprintf(fp,"\"%s\" [shape=diamond,color=\"%s\", penwidth=3];\n",pretty_print(node).c_str(), get_rootid_color(node->rootid).c_str());
 		}
 		it++;
 	}
