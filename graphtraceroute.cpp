@@ -24,7 +24,7 @@
 #include <map>
 #include <iostream>
 
-int global_rootbitmap_count = 1;
+int global_rootbitmap_count = 0;
 
 struct TraceConnection {
 	TraceConnection() {
@@ -96,7 +96,7 @@ void add_trace(std::vector<std::string>& trace, const std::string& leaflabel, in
 		// First node of each seperate trace is always a root
 		if (root) {
 			if (!current->rootid)
-				current->rootid = global_rootbitmap_count++;
+				current->rootid = ++global_rootbitmap_count;
 			rootid = current->rootid;
 			root = false;
 		}
@@ -199,15 +199,16 @@ std::string get_rootid_color(int rootid) {
 
 std::string get_colorlist(const TraceConnection& tc) {
 	std::string colorlist;
-	if (tc.rootbitmap & 1)
-		colorlist += get_rootid_color(1) + ":white:white:white:";
+	if (global_rootbitmap_count > 1) {
+		if (tc.rootbitmap & 1)
+			colorlist += get_rootid_color(1) + ":white:white:white:";
 
-	if (tc.rootbitmap & 2) {
-		colorlist += get_rootid_color(2) + ":white:white:white:";
+		if (tc.rootbitmap & 2) {
+			colorlist += get_rootid_color(2) + ":white:white:white:";
+		}
+		if (colorlist.length() > 0)
+			colorlist = ":white:white:white:" + colorlist;
 	}
-	if (colorlist.length() > 0)
-		colorlist = ":white:white:white:" + colorlist;
-
 	return colorlist;
 }
 
