@@ -681,7 +681,7 @@ int main(int argc, char* argv[]) {
 	if (dotoutfp) {
 		resolve_ips(all_connections);
 		fprintf(dotoutfp,"graph A  { outputMode=nodesfirst; mindist=0;\n");
-		fprintf(dotoutfp, "node  [style=rounded, shape=box, fontsize=10, margin=0.1,0, color=grey]\n");
+		fprintf(dotoutfp, "node  [style=rounded, shape=box, fontsize=10, margin=0.1, color=grey]\n");
 		fprintf(dotoutfp, "edge  [fontsize=8]\n");
 
 		fprintf_nodes(dotoutfp, all_connections);
